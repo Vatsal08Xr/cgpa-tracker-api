@@ -1,10 +1,4 @@
-/* ═══════════════════════════════════════════════════
-   CGPA Planner — script.js
-   Connects to FastAPI backend at http://localhost:8000
-═══════════════════════════════════════════════════ */
-
-const API = 'http://localhost:8000/api/v1';
-
+const API = 'https://cgpa-tracker-api.onrender.com/api/v1';
 // ── State ────────────────────────────────────────────
 let gradingSystem = null;
 let selectedPattern = 'recommended';
