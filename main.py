@@ -150,16 +150,16 @@ def weighted_cgpa(records: list[dict]) -> Decimal:
     tc = sum(D(r["credits"]) for r in records)
     return tw / tc if tc else D("0")
 
-
-def extract_earned(state: AcademicState) -> tuple[Decimal, int]:
-    """Returns (current_cgpa as Decimal, total_credits_earned as int)."""
+def extract_earned(state: AcademicState) -> tuple[Decimal, int, int]:
+    """Returns (current_cgpa as Decimal, total_credits_earned as int, semesters_completed as int)."""
     if state.semester_history:
         records = [{"sgpa": s.sgpa, "credits": s.credits} for s in state.semester_history]
-        return weighted_cgpa(records), sum(r["credits"] for r in records)
+        return weighted_cgpa(records), sum(r["credits"] for r in records), len(records)
     if state.current_cgpa is not None:
-        return D(state.current_cgpa), state.total_credits_earned
-    return D("0"), 0
-
+        # Estimate semesters completed if in summary mode (assuming ~20 credits/sem)
+        sems = max(1, state.total_credits_earned // 20) if state.total_credits_earned else 0
+        return D(state.current_cgpa), state.total_credits_earned, sems
+    return D("0"), 0, 0
 
 def required_uniform_sgpa(
     curr_cgpa: Decimal,
@@ -285,6 +285,7 @@ class EffortPattern(str, Enum):
     back_loaded   = "back_loaded"   # ease in, push later
     stepped_up    = "stepped_up"    # linear ramp up
     stepped_down  = "stepped_down"  # linear ramp down
+    recommended   = "recommended"   # recommended plan
     custom        = "custom"        # user-constrained
 
 
@@ -328,25 +329,45 @@ def optimize_plan_scipy(
     rhs = effective_target * (curr_credits + future_credits) - curr_cgpa * curr_credits
 
     # All objectives are quadratic → use scipy.optimize.minimize with SLSQP
-    if pattern == EffortPattern.uniform:
+    if pattern in (EffortPattern.uniform, EffortPattern.recommended):
+        # Recommended/Uniform mathematically minimizes the peak effort needed
         def obj(s):
             mean = sum(s) / n
             return sum((x - mean)**2 for x in s)
     elif pattern == EffortPattern.front_loaded:
         def obj(s):
-            return sum(s[i] * (n - i) for i in range(n))
+            # 1. Variance penalty prevents extreme jumps (keeps the curve smooth)
+            mean = sum(s) / n
+            variance = sum((x - mean)**2 for x in s)
+            
+            # 2. Linear push forces early grades to be higher
+            linear_push = sum(s[i] * i for i in range(n))
+            
+            # Balance them: 50 is a tuning weight. 
+            # Higher = flatter curve, Lower = steeper curve.
+            return (variance * 50) + linear_push
+
     elif pattern == EffortPattern.back_loaded:
         def obj(s):
-            return sum(s[i] * (i + 1) for i in range(n))
+            # 1. Variance penalty prevents extreme jumps
+            mean = sum(s) / n
+            variance = sum((x - mean)**2 for x in s)
+            
+            # 2. Linear push forces later grades to be higher
+            linear_push = sum(s[i] * (n - i) for i in range(n))
+            
+            return (variance * 50) + linear_push
     elif pattern == EffortPattern.stepped_up:
         def obj(s):
-            # minimize variance of differences (smooth ramp), penalize decreases
-            diffs = [s[i+1] - s[i] for i in range(n-1)]
-            return sum((d - abs(d))**2 * 100 for d in diffs) + statistics.variance(diffs) if len(diffs) > 1 else 0
+            if n < 2: return 0
+            # Penalize 2nd derivative to enforce a straight line, while pushing the slope up
+            line_pen = sum((s[i+1] - 2*s[i] + s[i-1])**2 for i in range(1, n-1))
+            return (s[0] - s[-1]) + 100 * line_pen
     elif pattern == EffortPattern.stepped_down:
         def obj(s):
-            diffs = [s[i] - s[i+1] for i in range(n-1)]
-            return sum((d - abs(d))**2 * 100 for d in diffs) + (statistics.variance(diffs) if len(diffs) > 1 else 0)
+            if n < 2: return 0
+            line_pen = sum((s[i+1] - 2*s[i] + s[i-1])**2 for i in range(1, n-1))
+            return (s[-1] - s[0]) + 100 * line_pen
     else:
         def obj(s):
             mean = sum(s) / n
@@ -400,11 +421,11 @@ def build_plan_from_sgpas(
     credits_per_sem: list[int],
     curr_cgpa: Decimal,
     curr_credits: int,
+    sems_completed: int,
     dp: int,
     grade_map: list[GradeEntry],
     sem_constraints: list[SemesterConstraint],
 ) -> list[dict]:
-    """Convert a list of SGPA floats into a rich per-semester plan."""
     aligned_constraints = _align_constraints(len(sgpas), sem_constraints)
     running_weighted = float(curr_cgpa) * curr_credits
     running_credits  = curr_credits
@@ -417,7 +438,7 @@ def build_plan_from_sgpas(
         c = aligned_constraints[i]
 
         plan.append({
-            "semester": i + 1,
+            "semester": sems_completed + i + 1,  # Continues from user's current sem
             "target_sgpa": round(sgpa, dp + 2),
             "credits": credits,
             "projected_cgpa_after": round(cgpa_after, dp),
@@ -709,6 +730,8 @@ def validate_grading_system(gs: GradingSystem):
 
 
 @app.post("/api/v1/calculate-plan", tags=["planning"])
+@app.post("/api/v1/calculate-plan", tags=["planning"])
+@app.post("/api/v1/calculate-plan", tags=["planning"])
 def calculate_plan(req: PlanRequest):
     """
     Core endpoint. Runs the optimization engine (scipy SLSQP when available,
@@ -717,7 +740,9 @@ def calculate_plan(req: PlanRequest):
     """
     gs = req.grading_system
     dp = gs.decimal_places
-    curr_cgpa, curr_credits = extract_earned(req.academic_state)
+    
+    # 1. Unpack the 3 values (including sems_completed)
+    curr_cgpa, curr_credits, sems_completed = extract_earned(req.academic_state)
 
     # Validate current CGPA against scale
     if curr_credits > 0 and not (D("0") <= curr_cgpa <= D(gs.scale_max)):
@@ -740,7 +765,7 @@ def calculate_plan(req: PlanRequest):
     # Quality points explainability
     qp = quality_points_breakdown(curr_cgpa, curr_credits, target, future_credits)
 
-    # Optimization
+    # 2. Optimization Engine -> THIS DEFINES 'sgpas'
     if SCIPY_AVAILABLE and feas["feasible"] and not feas.get("already_achieved"):
         sgpas, method = optimize_plan_scipy(
             float(curr_cgpa), curr_credits, float(target + D(req.desired_buffer)),
@@ -760,9 +785,10 @@ def calculate_plan(req: PlanRequest):
         )
         method = "fallback_uniform"
 
+    # 3. Build the final plan, passing sems_completed
     plan = build_plan_from_sgpas(
         sgpas, req.credits_per_remaining_semester,
-        curr_cgpa, curr_credits, dp, gs.grade_map, req.semester_constraints,
+        curr_cgpa, curr_credits, sems_completed, dp, gs.grade_map, req.semester_constraints,
     )
 
     # Trajectory for charts
