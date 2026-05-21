@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CGPA Planner</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav class="nav">
+    <div class="nav-logo">CGPA<span>planner</span></div>
+    <div class="nav-status" id="api-status">
+      <span class="status-dot"></span>
+      <span class="status-text">connecting…</span>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-label">academic planning engine</div>
+    <h1 class="hero-title">
+      Know exactly<br />what it takes.
+    </h1>
+    <p class="hero-sub">Enter your grading system, current standing, and target — get a precise semester-by-semester plan to get there.</p>
+    <button class="hero-cta" onclick="document.getElementById('setup').scrollIntoView({behavior:'smooth'})">
+      Start planning <span class="arrow">↓</span>
+    </button>
+  </section>
+
+  <!-- MAIN APP -->
+  <main class="app" id="setup">
+
+    <!-- STEP 1: GRADING SYSTEM -->
+    <section class="step" id="step-1">
+      <div class="step-header">
+        <div class="step-num">01</div>
+        <div>
+          <h2 class="step-title">Grading system</h2>
+          <p class="step-desc">Choose a preset or configure your university's scale.</p>
+        </div>
+      </div>
+
+      <div class="preset-grid" id="preset-grid">
+        <!-- filled by JS -->
+      </div>
+
+      <div class="divider-text">or configure manually</div>
+
+      <div class="form-grid">
+        <div class="field">
+          <label>Scale maximum</label>
+          <input type="number" id="scale-max" placeholder="10" step="0.1" />
+        </div>
+        <div class="field">
+          <label>Passing points</label>
+          <input type="number" id="passing-pts" placeholder="4" step="0.1" />
+        </div>
+        <div class="field">
+          <label>Decimal places</label>
+          <input type="number" id="decimal-places" placeholder="2" min="0" max="4" />
+        </div>
+      </div>
+
+      <div class="grade-map-section">
+        <div class="grade-map-header">
+          <span>Grade map</span>
+          <button class="btn-ghost" onclick="addGradeRow()">+ add grade</button>
+        </div>
+        <div class="grade-map-table">
+          <div class="grade-map-head">
+            <span>Grade</span>
+            <span>Points</span>
+            <span>Min %</span>
+            <span></span>
+          </div>
+          <div id="grade-rows">
+            <!-- filled by JS -->
+          </div>
+        </div>
+      </div>
+
+      <button class="btn-primary step-next" onclick="goToStep2()">
+        Continue <span>→</span>
+      </button>
+    </section>
+
+    <!-- STEP 2: ACADEMIC STATE -->
+    <section class="step hidden" id="step-2">
+      <div class="step-header">
+        <div class="step-num">02</div>
+        <div>
+          <h2 class="step-title">Your standing</h2>
+          <p class="step-desc">Where are you right now?</p>
+        </div>
+      </div>
+
+      <div class="toggle-group">
+        <button class="toggle active" id="toggle-summary" onclick="switchMode('summary')">I know my CGPA</button>
+        <button class="toggle" id="toggle-history" onclick="switchMode('history')">I have semester records</button>
+        <button class="toggle" id="toggle-fresh" onclick="switchMode('fresh')">I'm a freshman</button>
+      </div>
+
+      <!-- Summary mode -->
+      <div id="mode-summary" class="mode-panel">
+        <div class="form-grid">
+          <div class="field">
+            <label>Current CGPA</label>
+            <input type="number" id="current-cgpa" placeholder="7.5" step="0.01" />
+          </div>
+          <div class="field">
+            <label>Total credits earned</label>
+            <input type="number" id="total-credits" placeholder="120" />
+          </div>
+        </div>
+      </div>
+
+      <!-- History mode -->
+      <div id="mode-history" class="mode-panel hidden">
+        <div id="semester-history-rows"></div>
+        <button class="btn-ghost" onclick="addHistoryRow()">+ add semester</button>
+      </div>
+
+      <!-- Freshman mode -->
+      <div id="mode-fresh" class="mode-panel hidden">
+        <div class="info-card">
+          <span class="info-icon">◎</span>
+          <span>Starting from zero — the plan will be built from scratch.</span>
+        </div>
+      </div>
+
+      <button class="btn-primary step-next" onclick="goToStep3()">
+        Continue <span>→</span>
+      </button>
+    </section>
+
+    <!-- STEP 3: TARGET & PARAMETERS -->
+    <section class="step hidden" id="step-3">
+      <div class="step-header">
+        <div class="step-num">03</div>
+        <div>
+          <h2 class="step-title">Your target</h2>
+          <p class="step-desc">What do you want to achieve, and how long do you have?</p>
+        </div>
+      </div>
+
+      <div class="form-grid">
+        <div class="field">
+          <label>Target CGPA</label>
+          <input type="number" id="target-cgpa" placeholder="8.5" step="0.01" />
+        </div>
+        <div class="field">
+          <label>Remaining semesters</label>
+          <input type="number" id="remaining-sems" placeholder="4" min="1" />
+        </div>
+        <div class="field">
+          <label>Safety buffer</label>
+          <input type="number" id="buffer" placeholder="0.1" step="0.01" value="0" />
+          <span class="field-hint">extra CGPA cushion above target</span>
+        </div>
+      </div>
+
+      <div class="field" style="margin-top:1.5rem">
+        <label>Credits per remaining semester <span class="field-hint">(comma separated)</span></label>
+        <input type="text" id="credits-input" placeholder="22, 22, 20, 20" />
+      </div>
+
+      <div class="field" style="margin-top:1.5rem">
+        <label>Effort pattern</label>
+        <div class="pattern-grid" id="pattern-grid">
+          <div class="pattern-card active" data-pattern="recommended" onclick="selectPattern(this)">
+            <div class="pattern-name">Recommended</div>
+            <div class="pattern-desc">Lowest risk, balanced effort</div>
+          </div>
+          <div class="pattern-card" data-pattern="uniform" onclick="selectPattern(this)">
+            <div class="pattern-name">Uniform</div>
+            <div class="pattern-desc">Same effort every semester</div>
+          </div>
+          <div class="pattern-card" data-pattern="front_loaded" onclick="selectPattern(this)">
+            <div class="pattern-name">Front-loaded</div>
+            <div class="pattern-desc">Push hard early, ease off</div>
+          </div>
+          <div class="pattern-card" data-pattern="back_loaded" onclick="selectPattern(this)">
+            <div class="pattern-name">Back-loaded</div>
+            <div class="pattern-desc">Ease in, peak at the end</div>
+          </div>
+          <div class="pattern-card" data-pattern="stepped_up" onclick="selectPattern(this)">
+            <div class="pattern-name">Stepped up</div>
+            <div class="pattern-desc">Gradual improvement arc</div>
+          </div>
+          <div class="pattern-card" data-pattern="stepped_down" onclick="selectPattern(this)">
+            <div class="pattern-name">Stepped down</div>
+            <div class="pattern-desc">Start high, taper off</div>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn-primary step-next" id="calculate-btn" onclick="calculate()">
+        Calculate plan <span>→</span>
+      </button>
+    </section>
+
+    <!-- RESULTS -->
+    <section class="step hidden" id="step-results">
+      <div id="results-container"></div>
+    </section>
+
+  </main>
+
+  <!-- ERROR TOAST -->
+  <div class="toast hidden" id="toast">
+    <span id="toast-msg"></span>
+    <button onclick="hideToast()">×</button>
+  </div>
+
+  <footer class="footer">
+    Built with a real optimization engine. All math runs on your own backend.
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
