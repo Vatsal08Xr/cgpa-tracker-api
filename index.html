@@ -14,9 +14,16 @@
   <!-- NAV -->
   <nav class="nav">
     <div class="nav-logo">CGPA<span>planner</span></div>
-    <div class="nav-status" id="api-status">
-      <span class="status-dot"></span>
-      <span class="status-text">connecting…</span>
+    
+    <div style="display: flex; align-items: center; gap: 1.5rem;">
+      <div class="nav-status" id="api-status">
+        <span class="status-dot"></span>
+        <span class="status-text">connecting…</span>
+      </div>
+      
+      <button onclick="window.location.href='https://cgpa-tracker-api.onrender.com/auth/google'" class="btn-ghost" style="border-color: var(--accent); color: var(--text);">
+        Log in with Google
+      </button>
     </div>
   </nav>
 
