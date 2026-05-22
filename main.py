@@ -677,7 +677,7 @@ def grading_presets():
     return {
         "presets": [
             {
-                "name": "10-Point Scale (India — most universities)",
+                "name": "10-Point Scale",
                 "scale_max": 10.0, "passing_points": 4.0,
                 "decimal_places": 2, "credit_range": [15, 30],
                 "grade_map": [
@@ -692,7 +692,7 @@ def grading_presets():
                 ],
             },
             {
-                "name": "4-Point Scale (US GPA)",
+                "name": "4-Point Scale",
                 "scale_max": 4.0, "passing_points": 1.0,
                 "decimal_places": 2, "credit_range": [12, 21],
                 "grade_map": [
@@ -708,7 +708,7 @@ def grading_presets():
                 ],
             },
             {
-                "name": "Percentage-Based (100-Point)",
+                "name": "Percentage-Based",
                 "scale_max": 100.0, "passing_points": 40.0,
                 "decimal_places": 1, "credit_range": [15, 30],
                 "grade_map": [
