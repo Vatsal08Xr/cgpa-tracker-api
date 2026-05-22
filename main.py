@@ -41,6 +41,63 @@ try:
 except ImportError:
     SCIPY_AVAILABLE = False
 
+import os
+import httpx
+from fastapi.responses import RedirectResponse
+
+# Pull these from Render Environment Variables
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+# This MUST match exactly what you pasted in Google Cloud
+GOOGLE_REDIRECT_URI = "https://my-backend.onrender.com/auth/google/callback" 
+
+@app.get("/auth/google", tags=["auth"])
+def login_google():
+    """Step 1: Redirects the user to Google's consent screen."""
+    google_auth_url = (
+        f"https://accounts.google.com/o/oauth2/v2/auth?"
+        f"response_type=code&client_id={GOOGLE_CLIENT_ID}&"
+        f"redirect_uri={GOOGLE_REDIRECT_URI}&"
+        f"scope=openid%20profile%20email&access_type=offline"
+    )
+    return RedirectResponse(google_auth_url)
+
+@app.get("/auth/google/callback", tags=["auth"])
+async def auth_google_callback(code: str):
+    """Step 2: Google sends the user back here with a 'code'."""
+    
+    # Exchange the code for an access token
+    token_url = "https://oauth2.googleapis.com/token"
+    token_data = {
+        "code": code,
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "grant_type": "authorization_code",
+    }
+    
+    async with httpx.AsyncClient() as client:
+        token_res = await client.post(token_url, data=token_data)
+        token_json = token_res.json()
+        
+        if "error" in token_json:
+            return {"error": "Failed to exchange token", "details": token_json}
+            
+        access_token = token_json.get("access_token")
+        
+        # Use the access token to get the user's profile info
+        user_info_url = "https://www.googleapis.com/oauth2/v2/userinfo"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        user_res = await client.get(user_info_url, headers=headers)
+        user_profile = user_res.json()
+        
+    # --- SUCCESS! ---
+    # user_profile now contains their email, name, and profile picture.
+    # From here, you would typically generate a JWT token for your app
+    # and redirect the user back to your frontend with that token.
+    
+    frontend_redirect_url = f"https://my-frontend.onrender.com?email={user_profile['email']}"
+    return RedirectResponse(frontend_redirect_url)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # APP SETUP
