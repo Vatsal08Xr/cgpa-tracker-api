@@ -21,6 +21,8 @@ Design principles:
 """
 
 from __future__ import annotations
+from sqlmodel import Field, Session, SQLModel, create_engine, select
+from contextlib import asynccontextmanager
 
 import math
 import statistics
@@ -49,6 +51,27 @@ from fastapi.responses import RedirectResponse
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 GOOGLE_REDIRECT_URI = "https://cgpa-tracker-api.onrender.com/auth/google/callback"
+DATABASE_URL = os.getenv("DATABASE_URL")
+# SQLAlchemy requires 'postgresql://' but some providers give 'postgres://'. This fixes that.
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+# Connect to the database
+engine = create_engine(DATABASE_URL) if DATABASE_URL else None
+
+# Define the User Table
+class User(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    email: str = Field(unique=True, index=True)
+    name: str
+    picture: Optional[str] = None
+
+# Create the tables when the app starts
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if engine:
+        SQLModel.metadata.create_all(engine)
+    yield
 
 # ══════════════════════════════════════════════════════════════════════════════
 # APP SETUP
@@ -58,6 +81,7 @@ app = FastAPI(
     title="CGPA Tracker API",
     version="2.0.0",
     description="Academic planning engine: optimization, sensitivity analysis, course-level planning.",
+    lifespan=lifespan,
     openapi_tags=[
         {"name": "setup",    "description": "Grading system configuration"},
         {"name": "planning", "description": "Semester & course planning"},
@@ -1161,6 +1185,22 @@ async def auth_google_callback(code: str):
         headers = {"Authorization": f"Bearer {access_token}"}
         user_res = await client.get(user_info_url, headers=headers)
         user_profile = user_res.json()
+
+    if engine:
+        with Session(engine) as session:
+            # Check if user already exists
+            statement = select(User).where(User.email == user_profile["email"])
+            db_user = session.exec(statement).first()
+            
+            # If they don't exist, create a new record
+            if not db_user:
+                db_user = User(
+                    email=user_profile["email"],
+                    name=user_profile.get("name", ""),
+                    picture=user_profile.get("picture", "")
+                )
+                session.add(db_user)
+                session.commit()
         
     frontend_redirect_url = f"https://cgpa-tracker-rf11.onrender.com?email={user_profile['email']}"
     return RedirectResponse(frontend_redirect_url)
