@@ -21,7 +21,7 @@ Design principles:
 """
 
 from __future__ import annotations
-from sqlmodel import Field, Session, SQLModel, create_engine, select
+from sqlmodel import Field as DBField, Session, SQLModel, create_engine, select
 from contextlib import asynccontextmanager
 
 import math
@@ -61,10 +61,10 @@ engine = create_engine(DATABASE_URL) if DATABASE_URL else None
 
 # Define the User Table
 class User(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    email: str = Field(unique=True, index=True)
+    id: Optional[int] = DBField(default=None, primary_key=True)
+    email: str = DBField(unique=True, index=True)
     name: str
-    picture: Optional[str] = None
+    picture: str | None = None
 
 # Create the tables when the app starts
 @asynccontextmanager
